@@ -1,70 +1,93 @@
 from flask import Flask, request, make_response, jsonify
 from flask_cors import CORS
 from flask_migrate import Migrate
+from flask_restful import Api, Resource
 
 from models import db, Message
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///app.db'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///app.db"
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.json.compact = False
 
 CORS(app)
 migrate = Migrate(app, db)
+api = Api(app)
 
 db.init_app(app)
 
-@app.route('/messages', methods=['GET', 'POST'])
-def messages():
-    if request.method == 'GET':
-        messages = Message.query.order_by(Message.created_at.asc()).all()
-        
-        message_dict = [message.to_dict() for message in messages]
-        
-        return message_dict, 200
 
-    if request.method == 'POST':
-        data = request.json
-        new_message = Message(
-            username = data.get("username"),
-            body = data.get("body")
-        )
-        
-        db.session.add(new_message)
-        db.session.commit()
-        
-        new_message_dict = new_message.to_dict()
-        
-        return new_message_dict, 201
-@app.route('/messages/<int:id>', methods=['GET', 'PATCH', 'DELETE'])
-def messages_by_id(id):
-    message = db.session.get(Message, id)
-    if request.method == "GET":
-        message_serialized = message.to_dict()
-        return message_serialized, 200
-    
-    elif request.method == 'PATCH':
-        data = request.json
-        for attr in data:
-            setattr(message, attr, data.get(attr))
-        
-        db.session.add(message)
-        db.session.commit()
-        
-        message_dict = message.to_dict()
-        
-        return message_dict, 200
+@app.route("/")
+def welcome():
+    return "Chatterbox index"
 
-    elif request.method =='DELETE':
-        db.session.delete(message)
-        db.session.commit()
-        
-        response_body = {
-            "deleted successful": True,
-            "message": "Message deleted."
-        }
-        
-        return response_body, 200
+class Messages(Resource):
+    def get(self):
+        try:
+            serialized_messages = [
+                message.to_dict()
+                for message in Message.query.order_by(Message.created_at.asc())
+            ]
+            return serialized_messages, 200
+        except Exception as e:
+            return str(e), 400
+
+    def post(self):
+        try:
+            data = request.get_json()
+
+            new_message = Message(**data)
+
+            db.session.add(new_message)
+            db.session.commit()
+
+            message_dict = new_message.to_dict()
+
+            return message_dict, 201
+
+        except Exception as e:
+            return str(e), 400
+
+
+api.add_resource(Messages, "/messages")
+
+
+class MessageByID(Resource):
+    def get(self, id):
+        try:
+            message = db.session.get(Message, id).to_dict()
+            return message, 200
+        except Exception as e:
+            return str(e), 400
     
-if __name__ == '__main__':
-    app.run(port=5555)
+    def patch(self, id):
+        try:
+            if not (message := db.session.get(Message, id)):
+                return {"message": f"Could not find {id}"}
+
+            for attr in request.get_json():
+                setattr(message, attr, request.get_json()[attr])
+
+            db.session.commit()
+
+            message_dict = message.to_dict()
+
+            return message_dict, 200
+        except Exception as e:
+            return str(e), 400
+    
+    def delete(self, id):
+        try:
+            message = db.session.get(Message, id)
+            
+            db.session.delete(message)
+            db.session.commit()
+            
+            return {}, 204
+        except Exception as e:
+            return str(e), 400
+
+api.add_resource(MessageByID, "/messages/<int:id>")
+
+if __name__ == "__main__":
+    app.run(port=5555, debug=True)
