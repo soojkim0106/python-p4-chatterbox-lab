@@ -34,7 +34,7 @@ class Messages(Resource):
 
     def post(self):
         try:
-            data = request.get_json()
+            data = request.json
 
             new_message = Message(**data)
 
@@ -65,8 +65,8 @@ class MessageByID(Resource):
             if not (message := db.session.get(Message, id)):
                 return {"message": f"Could not find {id}"}
 
-            for attr in request.get_json():
-                setattr(message, attr, request.get_json()[attr])
+            for attr in request.json:
+                setattr(message, attr, request.json[attr])
 
             db.session.commit()
 
